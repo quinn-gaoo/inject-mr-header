@@ -1,7 +1,8 @@
 import ReactDOM from 'react-dom/client';
+import tippyBaseCss from 'tippy.js/dist/tippy.css?inline';
 import { PagePanel } from '@/components/PagePanel';
 import panelCss from '@/styles/page-panel.css?inline';
-import popoverCss from '@/styles/page-popover.css?inline';
+import tippyThemeCss from '@/styles/tippy-theme.css?inline';
 
 export default defineContentScript({
   matches: ['http://*/*', 'https://*/*'],
@@ -12,7 +13,7 @@ export default defineContentScript({
     const host = document.createElement('div');
     host.setAttribute('data-mrh-root', '');
     host.style.cssText =
-      'all: initial; position: fixed; top: 16px; right: 16px; z-index: 2147483000; width: 30px; height: 30px; display: none;';
+      'all: initial; position: fixed; top: 16px; right: 16px; z-index: 2147483000; width: 24px; height: 24px; display: none;';
 
     const shadow = host.attachShadow({ mode: 'open' });
     const style = document.createElement('style');
@@ -23,11 +24,11 @@ export default defineContentScript({
     shadow.appendChild(container);
     document.documentElement.appendChild(host);
 
-    // Headless UI 的 Popover 面板会 portal 到 body，这里为它注入独立样式
-    const popoverStyle = document.createElement('style');
-    popoverStyle.setAttribute('data-mrh-popover-style', '');
-    popoverStyle.textContent = popoverCss;
-    (document.head ?? document.documentElement).appendChild(popoverStyle);
+    // Tippy.js 的 tooltip 会挂到页面 body 上，这里为它注入全局样式
+    const tippyStyle = document.createElement('style');
+    tippyStyle.setAttribute('data-mrh-tippy-style', '');
+    tippyStyle.textContent = `${tippyBaseCss}\n${tippyThemeCss}`;
+    (document.head ?? document.documentElement).appendChild(tippyStyle);
 
     const root = ReactDOM.createRoot(container);
     root.render(<PagePanel host={host} />);
@@ -35,7 +36,7 @@ export default defineContentScript({
     ctx.onInvalidated(() => {
       root.unmount();
       host.remove();
-      popoverStyle.remove();
+      tippyStyle.remove();
     });
   },
 });

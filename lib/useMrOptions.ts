@@ -32,8 +32,10 @@ export function useMrOptions(
     rule.extraQuery,
   ].join('\u0000');
 
+  // 停用只影响是否注入请求头，不影响查看/选择 MR：
+  // 手动刷新在规则停用时仍然可用。
   const refresh = useCallback(async () => {
-    if (!enabled || !configured) {
+    if (!configured) {
       setLoading(false);
       return;
     }
@@ -52,14 +54,9 @@ export function useMrOptions(
     }
     // key 覆盖了所有会影响 MR 请求的字段
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, enabled, configured]);
+  }, [key, configured]);
 
   useEffect(() => {
-    if (!enabled) {
-      setLoading(false);
-      return;
-    }
-
     const id = requestId.current + 1;
     requestId.current = id;
     setLoading(true);
@@ -68,6 +65,8 @@ export function useMrOptions(
 
     void (async () => {
       try {
+        // 无论规则是否启用，都先展示已加载的缓存列表；
+        // enabled 只决定是否自动发起 GitLab 请求。
         const cached = await getCachedMrList(settings, rule);
         if (requestId.current !== id) return;
         if (cached) {
@@ -76,7 +75,7 @@ export function useMrOptions(
           return;
         }
 
-        if (!configured) {
+        if (!configured || !enabled) {
           setLoading(false);
           return;
         }

@@ -80,8 +80,10 @@ export function RuleMrCache({
 
   const items = cache ? [...cache.result.items] : [];
   if (selectedMr && !items.some((item) => item.iid === selectedMr.iid)) {
-    items.unshift(selectedMrToOption(selectedMr));
+    items.push(selectedMrToOption(selectedMr));
   }
+  // MR 按编号从高到低展示
+  items.sort((a, b) => b.iid - a.iid);
 
   return (
     <div className="rule-mr-section">
@@ -120,7 +122,6 @@ export function RuleMrCache({
                 key={item.iid}
                 mr={item}
                 selected={isSelected}
-                anchor="bottom start"
                 onSelect={() => onSelect?.(isSelected ? null : item)}
               />
             );

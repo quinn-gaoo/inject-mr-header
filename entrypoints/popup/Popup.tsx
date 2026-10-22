@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 import { browser } from 'wxt/browser';
 import { RuleCard } from '@/components/RuleCard';
-import { AlertIcon, GearIcon } from '@/components/icons';
+import { AlertIcon, GearIcon, PlugIcon, PlusIcon } from '@/components/icons';
 import { Switch } from '@/components/Switch';
 import { hostMatchesDomain } from '@/lib/domain';
 import { selectedMrFromOption } from '@/lib/format';
@@ -20,7 +20,7 @@ export default function Popup() {
     setRuleEnabled,
     setSelectedMr,
   } = useAppState();
-  const currentHost = useCurrentTabHost();
+  const { host: currentHost, ready: hostReady } = useCurrentTabHost();
 
   const openOptions = useCallback(() => {
     const url = browser.runtime.getURL('/options.html');
@@ -70,24 +70,18 @@ export default function Popup() {
           <div className="popup-mark" aria-hidden="true">
             MR
           </div>
-          <div className="popup-title">MR Header</div>
+          <div className="popup-brand-text">
+            <div className="popup-title">MR Header</div>
+            <div className="popup-subtitle">按域名注入 MR 请求头</div>
+          </div>
         </div>
         <div className="popup-header-actions">
-          <div className="popup-toggle">
-            <span>插件</span>
+          <div className="popup-master">
+            <span className="popup-toggle-label">总开关</span>
             <Switch
               checked={settings.masterEnabled}
               onChange={(checked) => void updateSettings({ masterEnabled: checked })}
               label="注入总开关"
-              size="sm"
-            />
-          </div>
-          <div className="popup-toggle">
-            <span>悬浮</span>
-            <Switch
-              checked={settings.pageOverlayEnabled}
-              onChange={(checked) => void updateSettings({ pageOverlayEnabled: checked })}
-              label="页面悬浮入口"
               size="sm"
             />
           </div>
@@ -103,7 +97,14 @@ export default function Popup() {
         </div>
       </header>
 
-      {matchedRules.length > 0 ? (
+      {!hostReady ? (
+        <main className="popup-main">
+          <div className="popup-empty">
+            <span className="spinner" />
+            <p>正在读取当前页面…</p>
+          </div>
+        </main>
+      ) : matchedRules.length > 0 ? (
         <main className="popup-main">
           <div className="popup-rules">
             {matchedRules.map((rule) => (
@@ -118,7 +119,35 @@ export default function Popup() {
             ))}
           </div>
         </main>
-      ) : null}
+      ) : (
+        <main className="popup-main">
+          <div className="popup-empty">
+            <div className="empty-icon">
+              <PlugIcon />
+            </div>
+            <div className="empty-title">
+              {currentHost ? '当前页面没有匹配的规则' : '当前页面不支持注入'}
+            </div>
+            <p>
+              {currentHost ? (
+                <>
+                  还没有为 <code>{currentHost}</code> 配置规则。添加后，这个域名下的页面请求会自动带上所选 MR 的请求头。
+                </>
+              ) : (
+                'MR Header 只能作用于 http/https 页面，请先打开需要注入请求头的业务页面。'
+              )}
+            </p>
+            {currentHost ? (
+              <div className="popup-empty-actions">
+                <button type="button" className="btn btn-primary" onClick={openOptions}>
+                  <PlusIcon />
+                  添加规则
+                </button>
+              </div>
+            ) : null}
+          </div>
+        </main>
+      )}
     </div>
   );
 }

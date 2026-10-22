@@ -12,6 +12,7 @@ export function MrInfoContent({ info }: MrInfoContentProps) {
         <span className="mr-info-id">!{info.iid}</span>
         <span className="mr-info-state">{mrStateLabel(info.state)}</span>
       </div>
+      {info.title ? <div className="mr-info-title">{info.title}</div> : null}
       {info.sourceBranch || info.targetBranch ? (
         <div className="mr-info-meta">
           {info.sourceBranch || '?'} → {info.targetBranch || '?'}

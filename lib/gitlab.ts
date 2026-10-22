@@ -268,7 +268,9 @@ export async function fetchMergeRequests(
 
   const items = data
     .map(toMrOption)
-    .filter((item): item is MrOption => item !== null);
+    .filter((item): item is MrOption => item !== null)
+    // 缓存和 UI 都按 MR 编号从高到低排列
+    .sort((a, b) => b.iid - a.iid);
 
   const totalHeader = headers.get('x-total');
   const total = totalHeader && /^\d+$/.test(totalHeader) ? Number(totalHeader) : null;

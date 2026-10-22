@@ -1,6 +1,7 @@
 import type { AppSettings, InjectionRule, MrOption } from '@/lib/types';
 import { useMrOptions } from '@/lib/useMrOptions';
 import { MrTagPicker } from './MrTagPicker';
+import { TippyMrTag } from './TippyMrTag';
 
 interface PopupMrTagPickerProps {
   rule: InjectionRule;
@@ -32,8 +33,11 @@ export function PopupMrTagPicker({
       loading={loading}
       error={error}
       configured={configured}
+      repo={rule.projectPath}
       onSelect={onSelect}
       onRefresh={() => void refresh()}
+      details="none"
+      TagComponent={TippyMrTag}
     />
   );
 }

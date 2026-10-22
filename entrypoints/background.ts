@@ -170,14 +170,14 @@ async function updateBadgeForTab(tabId: number, url: string | undefined): Promis
   if (!snapshot) await syncAll();
 
   const settings = snapshot?.settings;
-  if (!snapshot || !settings || !settings.masterEnabled) {
+  if (!snapshot || !settings) {
     await setInactiveIcon(action, tabId);
     return;
   }
 
-  // 域名命中且规则启用时，给图标叠加一个小圆点；不显示 MR 文本
-  const matching = snapshot.rules.filter(
-    (rule) => rule.enabled && hostMatchesDomain(host, rule.domain),
+  // 域名匹配到规则就点亮图标圆点，不受总开关和单条规则启停影响
+  const matching = snapshot.rules.filter((rule) =>
+    hostMatchesDomain(host, rule.domain),
   );
 
   if (matching.length === 0) {

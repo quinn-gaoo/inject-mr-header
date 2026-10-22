@@ -84,7 +84,7 @@ export interface MrListResult {
   total: number | null;
 }
 
-/** Popover 中展示的 MR 概要信息。 */
+/** MR 概要信息。 */
 export interface MrInfo {
   iid: number;
   title: string;

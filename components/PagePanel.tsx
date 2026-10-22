@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { browser } from 'wxt/browser';
 import { AlertIcon, CloseIcon } from '@/components/icons';
 import { PageMrTagPicker } from '@/components/PageMrTagPicker';
+import { Switch } from '@/components/Switch';
 import { isExtensionContextInvalidated } from '@/lib/contextError';
 import { describeError } from '@/lib/errors';
 import { selectedMrFromOption } from '@/lib/format';
@@ -65,10 +66,11 @@ export function PagePanel({ host }: PagePanelProps) {
   }, [invalidated]);
 
   const pageHost = window.location.hostname.toLowerCase();
+  // 只要域名匹配到规则就保留悬浮窗口，不受规则启停影响；全局关闭只由 options 的悬浮窗口开关控制。
   const matchedRules =
-    data && data.settings.masterEnabled && data.settings.pageOverlayEnabled
+    data && data.settings.pageOverlayEnabled
       ? data.rules
-          .filter((rule) => rule.enabled && hostMatchesDomain(pageHost, rule.domain))
+          .filter((rule) => hostMatchesDomain(pageHost, rule.domain))
           .sort((a, b) => b.domain.length - a.domain.length)
       : [];
   const visible = Boolean(data && matchedRules.length > 0);
@@ -105,6 +107,24 @@ export function PagePanel({ host }: PagePanelProps) {
         target.selectedMr = option
           ? selectedMrFromOption(option, target.projectPath)
           : null;
+        target.updatedAt = Date.now();
+      });
+    } catch (cause) {
+      if (isExtensionContextInvalidated(cause)) {
+        setInvalidated(true);
+        return;
+      }
+      setActionError(describeError(cause));
+    }
+  };
+
+  const handleToggle = async (rule: InjectionRule, enabled: boolean) => {
+    setActionError(null);
+    try {
+      await mutateRules((rules) => {
+        const target = rules.find((item) => item.id === rule.id);
+        if (!target) return;
+        target.enabled = enabled;
         target.updatedAt = Date.now();
       });
     } catch (cause) {
@@ -189,10 +209,14 @@ export function PagePanel({ host }: PagePanelProps) {
                   {matchedRules.map((rule) => (
                     <section className="mrh-rule" key={rule.id}>
                       <div className="mrh-rule-head">
-                        <span className="mrh-tag mrh-tag-domain">{rule.domain}</span>
                         <span className="mrh-tag">{rule.headerName}</span>
-                        <span className="mrh-repo" title={rule.projectPath}>
-                          {rule.projectPath}
+                        <span className="mrh-rule-switch">
+                          <Switch
+                            checked={rule.enabled}
+                            onChange={(enabled) => void handleToggle(rule, enabled)}
+                            label={`${rule.domain || '规则'} 启用开关`}
+                            size="sm"
+                          />
                         </span>
                       </div>
                       <PageMrTagPicker

@@ -33,9 +33,6 @@ export function RuleCard({
       <article className={`rule-card${rule.enabled ? '' : ' is-disabled'}`}>
         <header className="rule-head">
           <div className="rule-title">
-            <span className="rule-domain" title={`${rule.domain}（匹配所有子域）`}>
-              {rule.domain || '未设置域名'}
-            </span>
             <span className="rule-header-tag">{rule.headerName || 'X-MR-ID'}</span>
           </div>
           <Switch
@@ -71,9 +68,7 @@ export function RuleCard({
     <article className={`rule-card${rule.enabled ? '' : ' is-disabled'}`}>
       <header className="rule-head">
         <div className="rule-title">
-          <span className="rule-domain" title={`${rule.domain}（匹配所有子域）`}>
-            {rule.domain || '未设置域名'}
-          </span>
+          <span className="rule-header-tag">{rule.headerName || 'X-MR-ID'}</span>
         </div>
         <Switch
           checked={rule.enabled}
@@ -82,14 +77,6 @@ export function RuleCard({
           size="sm"
         />
       </header>
-
-      <div className="rule-meta">
-        <span className="mono" title={rule.projectPath}>
-          {rule.projectPath || '未设置仓库'}
-        </span>
-        <span className="rule-meta-dot" />
-        <span className="mono">{rule.headerName}</span>
-      </div>
 
       {onSelectTag ? (
         <PopupMrTagPicker

@@ -1,7 +1,28 @@
+import type { ComponentType } from 'react';
 import type { MrOption, SelectedMr } from '@/lib/types';
 import { selectedMrToOption } from '@/lib/format';
 import { MrInfoContent } from './MrInfoContent';
 import { AlertIcon, RefreshIcon } from './icons';
+
+export interface MrTagItemProps {
+  item: MrOption;
+  selected: boolean;
+  onSelect: () => void;
+}
+
+function DefaultMrTag({ item, selected, onSelect }: MrTagItemProps) {
+  return (
+    <button
+      type="button"
+      className={`mr-tag${selected ? ' is-selected' : ''}`}
+      aria-pressed={selected}
+      title={item.title || `!${item.iid}`}
+      onClick={onSelect}
+    >
+      !{item.iid}
+    </button>
+  );
+}
 
 interface MrTagPickerProps {
   selectedMr: SelectedMr | null;
@@ -9,13 +30,18 @@ interface MrTagPickerProps {
   loading: boolean;
   error: string | null;
   configured: boolean;
+  repo?: string;
   onSelect: (mr: MrOption | null) => void;
   onRefresh: () => void;
+  /** popup 里选中后只展示标题；页面面板展示完整信息。 */
+  details?: 'none' | 'title' | 'full';
+  /** 自定义 MR tag 渲染器，popup 用 Tippy 悬浮提示，页面面板使用原生 title。 */
+  TagComponent?: ComponentType<MrTagItemProps>;
 }
 
 /**
  * popup 和页面悬浮面板共享的 MR 选择区：
- * 上方是 MR ID tag，下方展示当前选中 MR 的信息。
+ * 上方是仓库和加载按钮，下面是 MR ID tag，选中后在下方展示标题或详情。
  */
 export function MrTagPicker({
   selectedMr,
@@ -23,13 +49,18 @@ export function MrTagPicker({
   loading,
   error,
   configured,
+  repo,
   onSelect,
   onRefresh,
+  details = 'full',
+  TagComponent = DefaultMrTag,
 }: MrTagPickerProps) {
   const allItems = [...items];
   if (selectedMr && !allItems.some((item) => item.iid === selectedMr.iid)) {
-    allItems.unshift(selectedMrToOption(selectedMr));
+    allItems.push(selectedMrToOption(selectedMr));
   }
+  // MR 按编号从高到低展示
+  allItems.sort((a, b) => b.iid - a.iid);
 
   const selectedOption =
     allItems.find((item) => item.iid === selectedMr?.iid) ??
@@ -38,6 +69,11 @@ export function MrTagPicker({
   return (
     <div className="mr-tag-picker">
       <div className="mr-tag-head">
+        {repo ? (
+          <span className="mr-tag-repo" title={repo}>
+            {repo}
+          </span>
+        ) : null}
         <span className="mr-tag-count">{allItems.length} 个 MR</span>
         <button
           type="button"
@@ -65,21 +101,22 @@ export function MrTagPicker({
           {allItems.map((item) => {
             const isSelected = selectedMr?.iid === item.iid;
             return (
-              <button
+              <TagComponent
                 key={item.iid}
-                type="button"
-                className={`mr-tag${isSelected ? ' is-selected' : ''}`}
-                aria-pressed={isSelected}
-                onClick={() => onSelect(isSelected ? null : item)}
-              >
-                !{item.iid}
-              </button>
+                item={item}
+                selected={isSelected}
+                onSelect={() => onSelect(isSelected ? null : item)}
+              />
             );
           })}
         </div>
       ) : null}
 
-      {selectedOption ? (
+      {details === 'title' && selectedOption ? (
+        <div className="mr-tag-title">{selectedOption.title}</div>
+      ) : null}
+
+      {details === 'full' && selectedOption ? (
         <div className="mr-tag-selected">
           <MrInfoContent info={selectedOption} />
         </div>

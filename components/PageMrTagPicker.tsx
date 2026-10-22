@@ -6,6 +6,7 @@ import { getCachedMrList, type LoadedMrList } from '@/lib/mrCache';
 import { isConfigured } from '@/lib/rules';
 import type { AppSettings, InjectionRule, MrOption } from '@/lib/types';
 import { MrTagPicker } from './MrTagPicker';
+import { TippyMrTag } from './TippyMrTag';
 
 interface PageMrTagPickerProps {
   rule: InjectionRule;
@@ -52,8 +53,8 @@ export function PageMrTagPicker({
       .then((cached) => {
         if (!alive || loadId.current !== id) return;
         setCache(cached);
-        if (!cached && configured && rule.enabled) {
-          // 和 popup 一致：首次打开且没有缓存时自动加载 MR
+        if (!cached && configured) {
+          // 规则停用也允许加载，方便在悬浮窗口里继续查看和选择 MR
           void refreshRef.current();
         }
       })
@@ -68,7 +69,7 @@ export function PageMrTagPicker({
   }, [cacheKey]);
 
   const refresh = async () => {
-    if (!configured || !rule.enabled) return;
+    if (!configured) return;
     const id = loadId.current + 1;
     loadId.current = id;
     setLoading(true);
@@ -108,8 +109,11 @@ export function PageMrTagPicker({
       loading={loading}
       error={error}
       configured={configured}
+      repo={rule.projectPath}
       onSelect={onSelect}
       onRefresh={() => void refresh()}
+      details="none"
+      TagComponent={TippyMrTag}
     />
   );
 }

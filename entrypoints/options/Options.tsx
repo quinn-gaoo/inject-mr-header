@@ -205,6 +205,23 @@ export default function Options() {
         />
       </section>
 
+      <section id="overlay" className="card overlay-card">
+        <div className="overlay-copy">
+          <h2 className="overlay-title">悬浮窗口</h2>
+          <p className="overlay-desc">
+            开启后，只要当前页面匹配到已配置的规则，注入页面的悬浮窗口就会保留显示；规则停用或关闭不会隐藏它。
+          </p>
+        </div>
+        <div className={`overlay-control${settings.pageOverlayEnabled ? ' is-on' : ''}`}>
+          <span>{settings.pageOverlayEnabled ? '已开启' : '已关闭'}</span>
+          <Switch
+            checked={settings.pageOverlayEnabled}
+            onChange={(checked) => void updateSettings({ pageOverlayEnabled: checked })}
+            label="页面悬浮窗口"
+          />
+        </div>
+      </section>
+
       <section className="rules-section" id="rules">
         <div className="section-head">
           <div>
