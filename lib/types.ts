@@ -33,10 +33,24 @@ export interface SelectedMr {
   selectedAt: number;
 }
 
+/** 规则模式：注入请求头或请求重定向。 */
+export type RuleMode = 'header' | 'redirect';
+
+/** 单条 MR 的本地标记，按 iid 存在规则里。 */
+export interface MrMeta {
+  pinned?: boolean;
+  note?: string;
+}
+
+/** key 为 MR iid 的字符串形式。 */
+export type MrMetaMap = Record<string, MrMeta>;
+
 export interface InjectionRule {
   id: string;
-  /** 归一化后的页面域名，不带通配符，例如 aaa.com。DNR 会同时匹配其子域。 */
-  domain: string;
+  /** 规则模式：注入请求头或重定向。 */
+  mode: RuleMode;
+  /** 匹配请求 URL 的正则，直接用于 DNR regexFilter。 */
+  pattern: string;
   /** 注入的请求头名，默认 X-MR-ID。 */
   headerName: string;
   /** GitLab 仓库路径（group/project）或数字 project id。 */
@@ -47,8 +61,12 @@ export interface InjectionRule {
   perPage: number;
   /** 额外 query string，例如 labels=bug&author_username=me。 */
   extraQuery: string;
+  /** 重定向目标域名/Origin；路径和 query 会保留。 */
+  redirectTarget: string;
   enabled: boolean;
   selectedMr: SelectedMr | null;
+  /** 按 MR iid 保存 Pin 和备注。 */
+  mrMeta: MrMetaMap;
   createdAt: number;
   updatedAt: number;
 }
@@ -116,7 +134,7 @@ export interface GitLabIdentity {
 /** 后台同步 DNR 后的状态，供 popup/options 展示。 */
 export interface InjectionStatus {
   syncedAt: number;
-  /** 实际生效的应用规则数量（每条会写入「页面来源 + 文档导航」两条 DNR 规则）。 */
+  /** 实际生效的应用规则数量（每条应用规则对应一条 DNR 规则）。 */
   appliedRuleCount: number;
   /** 按当前配置本应生效的规则数量。 */
   activeRuleCount: number;

@@ -1,37 +1,67 @@
 # MR Header Injector
 
-一个基于 WXT + React 的浏览器扩展：为指定域名下的页面请求自动注入 GitLab MR ID 请求头（默认 `X-MR-ID`）。
+一个基于 WXT + React 的浏览器扩展：按**请求 URL 正则**匹配请求，并执行两种动作：
 
-例如：规则域名 `*.aaa.com`、请求头 `X-MR-ID`、仓库 `group/a-front`，选中 MR `!123` 后，访问 `www.aaa.com` / `xxx.aaa.com` 时，页面文档和页面发出的接口请求都会带上：
+1. **注入请求头**：给命中的请求写入 GitLab MR ID，例如 `X-MR-ID: 123`。
+2. **请求重定向**：把命中请求的域名替换成另一个域名，路径和 query 保持不变。
 
-```http
-X-MR-ID: 123
+例如：
+
+```text
+规则正则：^https?://([a-z0-9-]+\.)*www\.aaa\.com/
+动作：注入 X-MR-ID，选中 MR !123
+结果：https://www.aaa.com/api/orders → X-MR-ID: 123
+
+规则正则：^https?://www\.export\.com/api/
+重定向目标：https://www.api.com
+结果：https://www.export.com/api/users?x=1
+   → https://www.api.com/api/users?x=1
 ```
 
 ## 功能
 
 - 配置任意 GitLab 实例地址（支持自建实例和子路径）+ Personal Access Token。
-- 在 options 页面配置 GitLab 连接、按域名添加注入规则；每条规则包含页面域名、GitLab 仓库、Header 名称，以及 MR 筛选条件。
-- options 里每条规则可以点「加载 MR」，把 MR 列表持久化缓存；加载后所有 MR 会以 tag 展示，点击 tag 也可直接选择，之后 popup 命中时直接使用缓存。
-- 打开匹配页面后，popup 只展示当前页面命中的规则；MR 只显示 ID tag，鼠标悬浮通过 Tippy.js 展示 MR 标题，不再展示选中详情。页面右上角的悬浮窗口在 options 的「悬浮窗口」设置中控制。
-- options 的规则卡片里，MR 以 ID tag 展示，鼠标悬浮时通过原生 `title` 提示查看 MR 标题。
-- 命中页面右上角会出现一个很小的中性色圆点（带呼吸动效），鼠标悬浮展示当前匹配规则和 MR ID tag；popup 和页面面板都通过 Tippy.js 悬浮展示 MR 标题，点击 tag 即可选择。扩展图标只显示小圆点，不显示 MR ID。
-- 暂停某条规则只会停止注入，已加载的 MR 列表和当前选择都会保留，仍可继续浏览和切换。
+- options 里添加规则；每条规则包含**匹配正则**和**模式**（注入请求头 / 请求重定向）。
+- 请求头模式需要配置 GitLab 仓库、Header 名称和 MR 筛选条件；重定向模式只需要正则和目标 Origin。
+- options 里每条请求头规则可以点「加载 MR」，把 MR 列表持久化缓存；加载后所有 MR 会以 tag 展示，点击 tag 可直接选择。
+- MR 支持 Pin 和备注：规则卡片里点「标记」可以给 MR 设置 Pin 或填写备注。Pin 的 MR 优先展示，其次是有备注的 MR，同级按编号从高到低。
+- 有备注的 MR 会直接用备注作为 tag 文案，鼠标悬浮通过 Tippy.js 查看 MR ID；没有备注的 MR 显示 ID，悬浮查看标题。
+- options、popup、注入页面的 MR tag 都通过 Tippy.js 展示悬浮信息，不再展示选中详情区域。
+- 页面右上角可开启悬浮窗口；窗口只展示请求头规则，并支持在页面里切换规则开关、加载/刷新 MR。
+- 暂停某条规则只会停止执行，已加载的 MR 列表和当前选择都会保留。
 - 默认只拉取 `opened` 状态的 MR，可切换为 merged / closed / 全部。
-- MR 列表支持每页数量、labels、author 等 GitLab 原生查询参数；MR tag 按编号从高到低排列。
-- popup 还支持开关单条规则和总开关。
-- 规则、Token、选中 MR 和 MR 列表缓存都保存在本机 `storage.local`，不同步到云端。
+- 规则（含 MR 的 Pin/备注）、Token、选中 MR 和 MR 列表缓存都保存在本机 `storage.local`，不同步到云端。
 - Chrome / Edge（Manifest V3）和 Firefox 113+（Manifest V2）构建。
 
 ## 工作原理
 
-扩展通过 `declarativeNetRequest` 动态规则修改请求头，不读取请求内容。
+扩展通过 `declarativeNetRequest` 动态规则处理请求：
 
-规则同时使用两种匹配条件：
+### 请求头注入
 
-- `initiatorDomains`：页面在 `aaa.com` 或任意子域时，页面里发出的 `fetch` / XHR / WebSocket / 静态资源请求都会带上请求头；即使接口在 `api.bbb.com` 这类其他域名，也会带上。
-- `requestDomains` + `main_frame`：地址栏/顶层导航的 HTML 文档请求本身没有 initiator，单独按目标域名匹配，所以直接访问 `www.aaa.com` 时文档请求也会带。
-- 其他域名的页面里用 `fetch` 调 `aaa.com` 的接口，不会被注入；但直接导航到 `aaa.com` 的文档请求会带。
+对每条启用的请求头规则生成一条动态规则：
+
+- `condition.regexFilter`：用户填写的正则，直接匹配完整请求 URL。
+- `action.type = modifyHeaders`：设置配置的请求头，值为当前选中 MR 的 iid。
+
+正则只匹配**请求 URL**，不再按页面来源匹配。页面本身发起的跨域接口请求，只有接口 URL 命中正则时才会注入。
+
+### 请求重定向
+
+对每条启用的重定向规则生成一条动态规则：
+
+- `condition.regexFilter`：匹配请求 URL。
+- `action.type = redirect`。
+- `action.redirect.transform.host`（以及可选的 scheme/port）：只替换目标域名。
+- 原请求的 path、query、fragment 默认保持不变。
+
+重定向规则不需要 GitLab 连接或 MR，属于独立规则。
+
+### 规则优先级
+
+- 同一条请求同时命中重定向和请求头规则时，重定向优先。
+- 总开关关闭时，所有规则都不生效。
+- 请求头规则还要求 GitLab 已配置且已选中 MR。
 
 ## 快速开始
 
@@ -60,52 +90,60 @@ pnpm dev:firefox
 1. 打开 options 页面（popup 右上角齿轮，或扩展详情页的“扩展程序选项”）。
 2. 填写 **GitLab 地址** 和 **Access Token**，点“测试连接”确认。
    - Token 在 GitLab → Preferences → Access Tokens 创建，scope 至少勾选 `read_api`。
-3. 点“添加规则”，填写：
-   - **页面域名**：`*.aaa.com`、`aaa.com` 或完整 URL 都可以，保存时会归一化。
-   - **GitLab 仓库**：`group/project`、数字 project ID，或直接粘贴仓库 URL。
-   - **请求头名称**：默认 `X-MR-ID`。
-   - **MR 状态 / 每页数量 / 高级查询参数**：按需调整。
-4. 保存规则后，点规则卡片上的「加载 MR」，把 MR 列表保存到本地；加载到的 MR 会以 tag 形式全部展示，点击 tag 可直接选择。
-   - 也可以跳过这一步，第一次在 popup 打开命中页面时会自动加载并缓存。
-5. 打开匹配域名的页面：
-   - 扩展图标右上角会出现小圆点，页面右上角会出现一个会呼吸的小圆点。
-   - 鼠标悬浮页面右上角圆点，会展示当前匹配规则和 MR ID tag；悬浮 MR tag 通过 Tippy.js 查看标题，点击 tag 选择 MR，面板里也可以加载或刷新 MR 数据。
-   - 可以在 options 的「悬浮窗口」设置里关闭这个页面窗口；开启时，只要当前页面匹配到已配置的规则就会显示，规则停用或关闭也不会隐藏。
-   - 也可以点击扩展图标，在 popup 的 MR tag 中选择；popup 优先使用已缓存的 MR 列表，右侧按钮可刷新。
-   - 没有命中时 popup 会展示提示和「添加规则」入口，点一下就能进入 options 配置。
-6. 选择 MR 后，页面文档和后续接口请求都会携带该请求头。
+3. 点“添加规则”，选择模式并填写：
+   - **匹配正则**：直接匹配请求 URL。例如 `aaa\.com` 或 `^https?://www\.aaa\.com/api/`。
+   - **请求头模式**：GitLab 仓库、Header 名称、MR 状态 / 每页数量 / 高级查询参数。
+   - **重定向模式**：目标域名 / Origin，例如 `https://www.api.com`；路径和 query 会保留。
+4. 保存请求头规则后，点规则卡片上的「加载 MR」，把 MR 列表保存到本地；加载到的 MR 会以 tag 形式全部展示，点击 tag 可直接选择。
+   - 点「标记」可以给 MR 设置 Pin 和备注；有备注的 tag 会优先展示备注。
+   - 也可以跳过这一步，第一次在 popup 打开时会自动加载并缓存。
+5. 打开页面后：
+   - 扩展图标右上角会出现小圆点，页面右上角会出现一个会呼吸的小圆点（有请求头规则匹配当前页面 URL 时）。
+   - 鼠标悬浮页面右上角圆点，会展示当前匹配的请求头规则和 MR ID tag；悬浮 MR tag 通过 Tippy.js 查看信息，点击 tag 选择 MR。
+   - 可以在 options 的「悬浮窗口」设置里关闭页面窗口；开启时，只要当前页面 URL 匹配到请求头规则就会显示，规则停用或关闭也不会隐藏。
+   - 也可以点击扩展图标，在 popup 的 MR tag 中选择；popup 优先使用已缓存的 MR 列表。
+6. 选择 MR 后，匹配正则的请求会携带该请求头。
 
 ### 规则示例
 
-| 页面域名 | 请求头 | GitLab 仓库 | 选中的 MR | 效果 |
-| --- | --- | --- | --- | --- |
-| `*.aaa.com` | `X-MR-ID` | `group/a-front` | `!123` | `www.aaa.com` 等子域页面的文档和请求带 `X-MR-ID: 123` |
-| `admin.aaa.com` | `X-MR-ID` | `group/a-admin` | `!456` | 只匹配 `admin.aaa.com` 及其子域 |
-| `bbb.com` | `X-MR-ID` | `group/b-front` | `!789` | `bbb.com` 页面文档和请求带 `X-MR-ID: 789` |
+| 模式 | 匹配正则 | 配置 | 效果 |
+| --- | --- | --- | --- |
+| 请求头 | `^https?://([a-z0-9-]+\.)*aaa\.com/` | `X-MR-ID`、`group/a-front`、`!123` | 匹配 `aaa.com` 及子域请求，携带 `X-MR-ID: 123` |
+| 请求头 | `^https?://www\.aaa\.com/api/` | `X-MR-ID`、`group/a-front`、`!456` | 只给 `/api/` 下的请求注入 |
+| 重定向 | `^https?://www\.export\.com/api/` | `https://www.api.com` | `/api/users?x=1` → `https://www.api.com/api/users?x=1` |
 
-## 域名匹配细节
+## 正则匹配细节
 
-- `aaa.com`、`*.aaa.com`、`.aaa.com` 会被归一化为 `aaa.com`，匹配该域名和所有子域。
-- 支持 `https://www.aaa.com/path`，只取 host。因此 `https://wxt.dev/`、`*.wxt.dev`、`wxt.dev` 保存后都会归一化为 `wxt.dev`，这是预期行为，不是丢失配置。
-- 当前不支持“只匹配 apex”或“只匹配子域”，也不支持按 URL 路径匹配；DNR 的域名条件无法区分这些情况。
-- 端口不参与匹配：`localhost` 规则会匹配 `localhost:3000`、`localhost:5173` 等。
-- 支持 IPv4、`localhost` 和中文域名（转 punycode）。
-- 域名重复的规则会被拒绝；如果两条规则域名有包含关系（`aaa.com` 和 `www.aaa.com`），更具体的域名优先级更高。
-- **规则域名必须填页面地址的 host，不是接口域名**。例如页面是 `wxt.dev`，规则却填了 `wxt.com`，不会匹配。
+- 正则直接作用于完整请求 URL（含 scheme、host、path、query）。
+- 匹配不区分大小写。
+- DNR 使用 RE2；不支持环视、命名分组和反向引用，编辑器会提前拦截。
+- 只写域名片段也可以，例如 `aaa\.com` 会命中 URL 中包含 `aaa.com` 的请求；建议写成 `^https?://([a-z0-9-]+\.)*aaa\.com/` 以限定域名边界。
+- 正则最长 2000 个字符；同一个模式下完全相同的正则会被拒绝。
+- 旧版普通域名规则会自动迁移成等价的 URL 正则，匹配该域名及所有子域。
+
+## 重定向细节
+
+- 目标可以填域名/Origin，也可以带一个固定路径，例如 `www.api.com`、`https://www.api.com`、`https://qiangqiang.work/api`。
+- 目标不带路径时：只替换 host（以及显式填写的 scheme/port），保留原请求的 path 和 query。
+- 目标带路径时：使用该固定路径，query 仍保留。
+- 目标不能包含 query 或 hash。
+- 例如正则 `^https?://www\.export\.com/api/` 匹配到 `https://www.export.com/api/users?x=1`，目标 `https://www.api.com` 后变成 `https://www.api.com/api/users?x=1`。
+- 例如正则 `^https://headlessui\.com/cdn-cgi/rum(?:[?#]|$)`，目标 `https://qiangqiang.work/api` 后变成 `https://qiangqiang.work/api`。
+- 如果目标写了完整 Origin 且没有端口，会清除原请求端口。
 
 ## 权限与安全
 
 扩展声明了以下权限：
 
 - `storage`：保存规则和 Token。
-- `declarativeNetRequest`：修改请求头。
-- `<all_urls>`：任意用户配置的域名都需要能注入请求头，同时用于访问自建 GitLab。
+- `declarativeNetRequest` / `declarativeNetRequestWithHostAccess`：修改请求头和重定向。
+- `<all_urls>`：任意用户配置的 URL 正则都需要能处理请求，同时用于访问自建 GitLab。
 
 注意事项：
 
-- Access Token 以明文保存在浏览器扩展的 `storage.local` 中，不会上传到任何第三方。请使用最小权限的 `read_api` Token，不要在共享浏览器配置中保存高权限 Token。
-- 扩展不会读取页面内容或请求体，只按规则添加/覆盖一个请求头。
-- 注入作用于页面发出的**所有资源类型**，并额外覆盖顶层文档导航；如果你只想让接口带，可后续在规则里扩展 `resourceTypes` 限制。
+- Access Token 以明文保存在浏览器扩展的 `storage.local` 中，不会上传到任何第三方。请使用最小权限的 `read_api` Token。
+- 扩展不会读取页面内容或请求体，只按规则修改请求头或重定向 URL。
+- 重定向规则会影响所有命中正则的请求，包括页面文档请求；请谨慎编写正则，避免把整页导航重定向走。
 
 ## 常见问题
 
@@ -122,11 +160,17 @@ Token 无效、过期或权限不足。重新创建 Token，scope 勾选 `read_a
 依次检查：
 
 1. 总开关和该条规则是否都打开。
-2. 页面 host 是否命中规则域名（如规则 `aaa.com` 不匹配 `bbb.com`；`wxt.com` 和 `wxt.dev` 也是两个域名）。
-3. 是否已经选中 MR（popup 或页面面板会显示当前 MR，扩展图标右上角应有小圆点）。
-4. 请求是否由该页面或它的顶层文档发起；其他站点页面/跨域 iframe 里发起的请求不算。
-5. 修改规则后是否刷新了页面，或重新发起了请求。
-6. 打开 `chrome://extensions` 查看扩展是否有错误；改代码后需要重新构建/重载扩展。
+2. 请求 URL 是否命中规则正则。正则只匹配请求 URL，不再按页面域名继承。
+3. 是否已经选中 MR（请求头规则需要）。
+4. 修改规则后是否重新发起了请求。
+5. 打开 `chrome://extensions` 查看扩展是否有错误；改代码后需要重新构建/重载扩展。
+
+**重定向没有生效**
+
+1. 总开关和该条重定向规则是否打开。
+2. 请求 URL 是否命中正则。
+3. 目标是否只填了域名/Origin；带路径会被拒绝。
+4. 是否被优先级更高的重定向规则覆盖。
 
 **MR 列表不是最新的**
 
@@ -134,7 +178,7 @@ options 的「加载 MR」、popup 的刷新按钮和页面面板的刷新都会
 
 **popup 里看不到某条规则**
 
-popup 只展示当前页面命中的规则。其他域名的规则请去 options 页面查看和编辑；当前页面没有命中时会展示提示和「添加规则」入口。
+popup 会列出所有请求头规则，方便直接选择 MR；重定向规则不会出现在 popup，请在 options 里管理。
 
 **GitLab 使用自签名证书**
 
@@ -146,7 +190,7 @@ popup 只展示当前页面命中的规则。其他域名的规则请去 options
 
 **Firefox 提示权限**
 
-Firefox 构建使用 Manifest V2。首次安装/临时加载后，确认扩展拥有对应站点的访问权限；`declarativeNetRequest` 修改请求头需要请求 URL 和页面来源的 host 权限，扩展申请的是 `<all_urls>`。
+Firefox 构建使用 Manifest V2。首次安装/临时加载后，确认扩展拥有对应站点的访问权限；`declarativeNetRequest` 需要请求 URL 权限，扩展申请的是 `<all_urls>`。
 
 ## 开发
 
@@ -163,16 +207,18 @@ pnpm zip            # 打包 Chrome 扩展
 entrypoints/
   background.ts        # DNR 规则同步、徽标、状态消息
   content.tsx          # 注入页面右上角圆点和悬浮选择面板
-  popup/               # 当前页面命中规则 + 选择 MR + 开关
+  popup/               # 请求头规则列表 + 选择 MR + 开关
   options/             # GitLab 连接 + 规则管理
 components/            # RuleCard、MrTagPicker、RuleEditor、RuleMrCache、PagePanel 等
 lib/
-  domain.ts            # 域名归一化与匹配
+  domain.ts            # 旧版域名解析（仅用于迁移/初始化）
+  pattern.ts           # 正则校验、URL 匹配、重定向目标解析
   gitlab.ts            # GitLab REST API
   rules.ts             # 规则校验与 DNR 规则构建
   dnr.ts               # 动态规则读写
   storage.ts           # chrome.storage 封装
   mrCache.ts           # MR 列表持久化缓存
+  mrMeta.ts            # MR Pin/备注排序与展示
   useAppState.ts       # 设置/规则状态
   useMrOptions.ts      # popup 的 MR 缓存读取 / 刷新
 styles/theme.css       # popup / options 共享样式

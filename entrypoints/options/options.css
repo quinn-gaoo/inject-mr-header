@@ -377,3 +377,84 @@ body {
     font-size: 20px;
   }
 }
+
+/* ---------- MR meta dialog ---------- */
+
+.mr-meta-body {
+  gap: 0;
+  max-height: min(58vh, 520px);
+  padding-top: 4px;
+  overflow-y: auto;
+}
+
+.mr-meta-body::-webkit-scrollbar {
+  width: 8px;
+}
+
+.mr-meta-body::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 6px;
+  background: var(--border-strong);
+  background-clip: padding-box;
+}
+
+.mr-meta-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+}
+
+.mr-meta-row:first-child {
+  border-top: 0;
+}
+
+.mr-meta-row-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.mr-meta-id {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.mr-meta-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mr-meta-pin {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.mr-meta-pin svg {
+  width: 12px;
+  height: 12px;
+}
+
+.mr-meta-note-input {
+  min-height: 34px;
+  font-size: 13px;
+}
+
+.mr-meta-empty {
+  padding: 12px 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}

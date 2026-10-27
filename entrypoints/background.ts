@@ -1,5 +1,6 @@
 import { browser } from 'wxt/browser';
-import { getHostname, hostMatchesDomain } from '@/lib/domain';
+import { getHostname } from '@/lib/domain';
+import { urlMatchesPattern } from '@/lib/pattern';
 import { replaceDynamicRules } from '@/lib/dnr';
 import { describeError } from '@/lib/errors';
 import { fetchAndCacheMrList } from '@/lib/mrCache';
@@ -175,9 +176,9 @@ async function updateBadgeForTab(tabId: number, url: string | undefined): Promis
     return;
   }
 
-  // 域名匹配到规则就点亮图标圆点，不受总开关和单条规则启停影响
-  const matching = snapshot.rules.filter((rule) =>
-    hostMatchesDomain(host, rule.domain),
+  // 只按请求头规则匹配页面 URL 来点亮图标；重定向规则没有 MR 选择入口
+  const matching = snapshot.rules.filter(
+    (rule) => rule.mode === 'header' && urlMatchesPattern(url ?? '', rule.pattern),
   );
 
   if (matching.length === 0) {

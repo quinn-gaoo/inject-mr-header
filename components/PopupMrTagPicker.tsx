@@ -34,6 +34,7 @@ export function PopupMrTagPicker({
       error={error}
       configured={configured}
       repo={rule.projectPath}
+      meta={rule.mrMeta}
       onSelect={onSelect}
       onRefresh={() => void refresh()}
       details="none"

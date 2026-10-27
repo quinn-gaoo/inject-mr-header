@@ -1,5 +1,6 @@
 import { browser } from 'wxt/browser';
 import { parseDomainInput } from './domain';
+import { domainToUrlPattern } from './pattern';
 import {
   DEFAULT_SETTINGS,
   isMrState,
@@ -7,6 +8,7 @@ import {
   type InjectionRule,
   type MrCacheEntry,
   type MrCacheMap,
+  type MrMetaMap,
   type SelectedMr,
   type StoredAppState,
 } from './types';
@@ -54,15 +56,38 @@ function normalizeSelectedMr(raw: unknown): SelectedMr | null {
   };
 }
 
+function normalizeMrMeta(raw: unknown): MrMetaMap {
+  if (!raw || typeof raw !== 'object') return {};
+  const result: MrMetaMap = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (!/^\d+$/.test(key) || !value || typeof value !== 'object') continue;
+    const item = value as { pinned?: unknown; note?: unknown };
+    const note = typeof item.note === 'string' ? item.note.trim() : '';
+    const pinned = item.pinned === true;
+    if (!note && !pinned) continue;
+    result[key] = {
+      ...(pinned ? { pinned: true } : {}),
+      ...(note ? { note } : {}),
+    };
+  }
+  return result;
+}
+
 function normalizeRule(raw: unknown, index: number): InjectionRule | null {
   if (!raw || typeof raw !== 'object') return null;
-  const value = raw as Partial<InjectionRule>;
+  const value = raw as Partial<InjectionRule> & { domain?: unknown };
   const now = Date.now();
-  const rawDomain = typeof value.domain === 'string' ? value.domain : '';
-  const parsedDomain = rawDomain ? parseDomainInput(rawDomain) : null;
+  const rawDomain = typeof value.domain === 'string' ? value.domain.trim() : '';
+  const rawPattern = typeof value.pattern === 'string' ? value.pattern.trim() : '';
+  let pattern = rawPattern;
+  if (!pattern && rawDomain) {
+    const parsedDomain = parseDomainInput(rawDomain);
+    pattern = parsedDomain.ok ? domainToUrlPattern(parsedDomain.domain) : rawDomain;
+  }
   return {
     id: typeof value.id === 'string' && value.id ? value.id : createId(),
-    domain: parsedDomain?.ok ? parsedDomain.domain : rawDomain,
+    mode: value.mode === 'redirect' ? 'redirect' : 'header',
+    pattern,
     headerName:
       typeof value.headerName === 'string' && value.headerName.trim()
         ? value.headerName.trim()
@@ -74,8 +99,11 @@ function normalizeRule(raw: unknown, index: number): InjectionRule | null {
         ? Math.min(100, Math.max(1, Math.round(value.perPage)))
         : 100,
     extraQuery: typeof value.extraQuery === 'string' ? value.extraQuery : '',
+    redirectTarget:
+      typeof value.redirectTarget === 'string' ? value.redirectTarget.trim() : '',
     enabled: value.enabled !== false,
     selectedMr: normalizeSelectedMr(value.selectedMr),
+    mrMeta: normalizeMrMeta(value.mrMeta),
     createdAt: typeof value.createdAt === 'number' ? value.createdAt : now - index,
     updatedAt: typeof value.updatedAt === 'number' ? value.updatedAt : now - index,
   };

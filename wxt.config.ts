@@ -5,9 +5,9 @@ export default defineConfig({
   modules: ['@wxt-dev/module-react'],
   manifest: ({ browser }) => ({
     name: 'MR Header Injector',
-    description: '按页面域名注入 GitLab MR 请求头',
+    description: '按请求 URL 正则注入 MR 请求头或重定向',
     version: '0.1.0',
-    permissions: ['storage', 'declarativeNetRequest'],
+    permissions: ['storage', 'declarativeNetRequest', 'declarativeNetRequestWithHostAccess'],
     host_permissions: ['<all_urls>'],
     action: {
       default_title: 'MR Header Injector',

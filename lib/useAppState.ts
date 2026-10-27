@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { browser } from 'wxt/browser';
 import {
   clearMrCacheForRule,
   mutateRules,
@@ -9,9 +10,16 @@ import {
 import type {
   AppSettings,
   InjectionRule,
+  MrMetaMap,
   SelectedMr,
   StoredAppState,
 } from './types';
+
+function requestRuleSync(): void {
+  void browser.runtime
+    .sendMessage({ type: 'mrh:sync' })
+    .catch(() => undefined);
+}
 
 export interface AppStateApi {
   settings: AppSettings | null;
@@ -25,6 +33,7 @@ export interface AppStateApi {
   removeRule: (id: string) => Promise<void>;
   setRuleEnabled: (id: string, enabled: boolean) => Promise<void>;
   setSelectedMr: (id: string, mr: SelectedMr | null) => Promise<void>;
+  setRuleMrMeta: (id: string, mrMeta: MrMetaMap) => Promise<void>;
 }
 
 export function useAppState(): AppStateApi {
@@ -56,6 +65,7 @@ export function useAppState(): AppStateApi {
 
   const updateSettings = useCallback(async (patch: Partial<AppSettings>) => {
     await patchSettings(patch);
+    requestRuleSync();
   }, []);
 
   const addRule = useCallback(async (rule: InjectionRule) => {
@@ -79,6 +89,7 @@ export function useAppState(): AppStateApi {
     if (result.updated && result.cacheChanged) {
       await clearMrCacheForRule(id);
     }
+    requestRuleSync();
   }, []);
 
   const removeRule = useCallback(async (id: string) => {
@@ -88,6 +99,7 @@ export function useAppState(): AppStateApi {
       return index >= 0;
     });
     await clearMrCacheForRule(id);
+    requestRuleSync();
   }, []);
 
   const setRuleEnabled = useCallback(
@@ -104,6 +116,16 @@ export function useAppState(): AppStateApi {
     [updateRule],
   );
 
+  const setRuleMrMeta = useCallback(async (id: string, mrMeta: MrMetaMap) => {
+    await mutateRules((rules) => {
+      const target = rules.find((item) => item.id === id);
+      if (!target) return;
+      target.mrMeta = mrMeta;
+      target.updatedAt = Date.now();
+    });
+    requestRuleSync();
+  }, []);
+
   return {
     settings: state?.settings ?? null,
     rules: state?.rules ?? [],
@@ -116,5 +138,6 @@ export function useAppState(): AppStateApi {
     removeRule,
     setRuleEnabled,
     setSelectedMr,
+    setRuleMrMeta,
   };
 }

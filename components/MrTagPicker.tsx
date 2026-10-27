@@ -1,25 +1,29 @@
 import type { ComponentType } from 'react';
-import type { MrOption, SelectedMr } from '@/lib/types';
+import type { MrMeta, MrMetaMap, MrOption, SelectedMr } from '@/lib/types';
 import { selectedMrToOption } from '@/lib/format';
+import { compareMrItems, mrMetaFor, mrTagView } from '@/lib/mrMeta';
 import { MrInfoContent } from './MrInfoContent';
-import { AlertIcon, RefreshIcon } from './icons';
+import { AlertIcon, PinIcon, RefreshIcon } from './icons';
 
 export interface MrTagItemProps {
   item: MrOption;
+  meta?: MrMeta;
   selected: boolean;
   onSelect: () => void;
 }
 
-function DefaultMrTag({ item, selected, onSelect }: MrTagItemProps) {
+function DefaultMrTag({ item, meta, selected, onSelect }: MrTagItemProps) {
+  const view = mrTagView(item, meta);
   return (
     <button
       type="button"
       className={`mr-tag${selected ? ' is-selected' : ''}`}
       aria-pressed={selected}
-      title={item.title || `!${item.iid}`}
+      title={view.tooltip}
       onClick={onSelect}
     >
-      !{item.iid}
+      {view.pinned ? <PinIcon className="mr-tag-pin" /> : null}
+      {view.note ? <span className="mr-tag-note">{view.note}</span> : `!${item.iid}`}
     </button>
   );
 }
@@ -31,6 +35,7 @@ interface MrTagPickerProps {
   error: string | null;
   configured: boolean;
   repo?: string;
+  meta?: MrMetaMap;
   onSelect: (mr: MrOption | null) => void;
   onRefresh: () => void;
   /** popup 里选中后只展示标题；页面面板展示完整信息。 */
@@ -50,6 +55,7 @@ export function MrTagPicker({
   error,
   configured,
   repo,
+  meta,
   onSelect,
   onRefresh,
   details = 'full',
@@ -59,8 +65,8 @@ export function MrTagPicker({
   if (selectedMr && !allItems.some((item) => item.iid === selectedMr.iid)) {
     allItems.push(selectedMrToOption(selectedMr));
   }
-  // MR 按编号从高到低展示
-  allItems.sort((a, b) => b.iid - a.iid);
+  // Pin > 备注 > 其他，同级按编号从高到低
+  allItems.sort((a, b) => compareMrItems(a, b, meta));
 
   const selectedOption =
     allItems.find((item) => item.iid === selectedMr?.iid) ??
@@ -104,6 +110,7 @@ export function MrTagPicker({
               <TagComponent
                 key={item.iid}
                 item={item}
+                meta={mrMetaFor(meta, item.iid)}
                 selected={isSelected}
                 onSelect={() => onSelect(isSelected ? null : item)}
               />

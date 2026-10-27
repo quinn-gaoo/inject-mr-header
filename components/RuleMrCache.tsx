@@ -2,16 +2,19 @@ import { useEffect, useRef, useState } from 'react';
 import { describeError } from '@/lib/errors';
 import { selectedMrToOption } from '@/lib/format';
 import { fetchAndCacheMrList, getCachedMrList, type LoadedMrList } from '@/lib/mrCache';
+import { compareMrItems, mrMetaFor } from '@/lib/mrMeta';
 import { isConfigured } from '@/lib/rules';
-import type { AppSettings, InjectionRule, MrOption, SelectedMr } from '@/lib/types';
+import type { AppSettings, InjectionRule, MrMetaMap, MrOption, SelectedMr } from '@/lib/types';
+import { MrMetaDialog } from './MrMetaDialog';
 import { MrTag } from './MrTag';
-import { AlertIcon, RefreshIcon } from './icons';
+import { AlertIcon, NoteIcon, RefreshIcon } from './icons';
 
 interface RuleMrCacheProps {
   rule: InjectionRule;
   settings: AppSettings;
   selectedMr: SelectedMr | null;
   onSelect?: (mr: MrOption | null) => void;
+  onSaveMeta?: (meta: MrMetaMap) => void;
 }
 
 /**
@@ -23,11 +26,13 @@ export function RuleMrCache({
   settings,
   selectedMr,
   onSelect,
+  onSaveMeta,
 }: RuleMrCacheProps) {
   const configured = isConfigured(settings);
   const [cache, setCache] = useState<LoadedMrList | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [metaOpen, setMetaOpen] = useState(false);
   const loadId = useRef(0);
 
   const cacheKey = [
@@ -82,8 +87,8 @@ export function RuleMrCache({
   if (selectedMr && !items.some((item) => item.iid === selectedMr.iid)) {
     items.push(selectedMrToOption(selectedMr));
   }
-  // MR 按编号从高到低展示
-  items.sort((a, b) => b.iid - a.iid);
+  // Pin > 备注 > 其他，同级按编号从高到低
+  items.sort((a, b) => compareMrItems(a, b, rule.mrMeta));
 
   return (
     <div className="rule-mr-section">
@@ -92,6 +97,12 @@ export function RuleMrCache({
           {rule.projectPath || '未设置仓库'}
         </span>
         <span className="rule-mr-count">{items.length} 个 MR</span>
+        {onSaveMeta && items.length > 0 ? (
+          <button type="button" className="rule-refresh" onClick={() => setMetaOpen(true)}>
+            <NoteIcon />
+            标记
+          </button>
+        ) : null}
         <button
           type="button"
           className="rule-refresh"
@@ -121,12 +132,22 @@ export function RuleMrCache({
               <MrTag
                 key={item.iid}
                 mr={item}
+                meta={mrMetaFor(rule.mrMeta, item.iid)}
                 selected={isSelected}
                 onSelect={() => onSelect?.(isSelected ? null : item)}
               />
             );
           })}
         </div>
+      ) : null}
+
+      {metaOpen && onSaveMeta ? (
+        <MrMetaDialog
+          rule={rule}
+          items={items}
+          onClose={() => setMetaOpen(false)}
+          onSave={onSaveMeta}
+        />
       ) : null}
     </div>
   );

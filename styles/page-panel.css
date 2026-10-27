@@ -686,6 +686,7 @@
 .mrh-panel .mr-tag {
   display: inline-flex;
   align-items: center;
+  gap: 4px;
   padding: 5px 10px;
   border: 1px solid var(--mrh-border);
   border-radius: 6px;
@@ -710,6 +711,28 @@
   border-color: var(--mrh-primary);
   background: var(--mrh-primary);
   color: var(--mrh-primary-text);
+}
+
+.mrh-panel .mr-tag-pin {
+  flex: 0 0 auto;
+  width: 11px;
+  height: 11px;
+  opacity: 0.7;
+}
+
+.mrh-panel .mr-tag.is-selected .mr-tag-pin {
+  opacity: 0.95;
+}
+
+.mrh-panel .mr-tag-note {
+  overflow: hidden;
+  max-width: 190px;
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    Roboto, 'Helvetica Neue', Arial, 'Noto Sans', 'PingFang SC', 'Hiragino Sans GB',
+    'Microsoft YaHei', sans-serif;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .mrh-panel .mr-tag-empty {

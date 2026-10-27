@@ -3,7 +3,7 @@ export type DomainParseResult =
   | { ok: false; error: string };
 
 /**
- * 把用户输入归一化成 DNR `initiatorDomains` 可用的域名。
+ * 把用户输入归一化成域名，仅用于旧版配置迁移和初始化。
  *
  * 支持：
  * - aaa.com / *.aaa.com / .aaa.com
@@ -63,13 +63,6 @@ export function parseDomainInput(raw: string): DomainParseResult {
   }
 
   return { ok: true, domain: candidate };
-}
-
-/** DNR 的域名条件天然包含子域：aaa.com 会匹配 www.aaa.com。 */
-export function hostMatchesDomain(hostname: string, domain: string): boolean {
-  const host = hostname.toLowerCase().replace(/\.+$/, '');
-  const base = domain.toLowerCase().replace(/\.+$/, '');
-  return host === base || host.endsWith(`.${base}`);
 }
 
 export function getHostname(url: string | undefined): string | null {

@@ -6,7 +6,7 @@ import { Switch } from '@/components/Switch';
 import { isExtensionContextInvalidated } from '@/lib/contextError';
 import { describeError } from '@/lib/errors';
 import { selectedMrFromOption } from '@/lib/format';
-import { hostMatchesDomain } from '@/lib/domain';
+import { urlMatchesPattern } from '@/lib/pattern';
 import { mutateRules, readRules, readSettings } from '@/lib/storage';
 import type { AppSettings, InjectionRule, MrOption } from '@/lib/types';
 import { useHoverClose } from '@/lib/useHoverClose';
@@ -66,12 +66,16 @@ export function PagePanel({ host }: PagePanelProps) {
   }, [invalidated]);
 
   const pageHost = window.location.hostname.toLowerCase();
-  // 只要域名匹配到规则就保留悬浮窗口，不受规则启停影响；全局关闭只由 options 的悬浮窗口开关控制。
+  const pageUrl = window.location.href;
+  // 只展示请求头规则；是否显示仍由 options 的悬浮窗口开关控制。
   const matchedRules =
     data && data.settings.pageOverlayEnabled
       ? data.rules
-          .filter((rule) => hostMatchesDomain(pageHost, rule.domain))
-          .sort((a, b) => b.domain.length - a.domain.length)
+          .filter(
+            (rule) =>
+              rule.mode === 'header' && urlMatchesPattern(pageUrl, rule.pattern),
+          )
+          .sort((a, b) => b.pattern.length - a.pattern.length)
       : [];
   const visible = Boolean(data && matchedRules.length > 0);
 
@@ -209,12 +213,14 @@ export function PagePanel({ host }: PagePanelProps) {
                   {matchedRules.map((rule) => (
                     <section className="mrh-rule" key={rule.id}>
                       <div className="mrh-rule-head">
-                        <span className="mrh-tag">{rule.headerName}</span>
+                        <span className="mrh-tag" title={rule.pattern || undefined}>
+                          {rule.headerName}
+                        </span>
                         <span className="mrh-rule-switch">
                           <Switch
                             checked={rule.enabled}
                             onChange={(enabled) => void handleToggle(rule, enabled)}
-                            label={`${rule.domain || '规则'} 启用开关`}
+                            label={`${rule.headerName || rule.pattern || '规则'} 启用开关`}
                             size="sm"
                           />
                         </span>

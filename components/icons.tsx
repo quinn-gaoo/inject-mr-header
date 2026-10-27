@@ -127,3 +127,20 @@ export function SparkIcon(props: IconProps) {
     </Icon>
   );
 }
+
+export function PinIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M12 17v5M8 3h8l-1.5 5.5L17 11v2H7v-2l2.5-2.5L8 3Z" />
+    </Icon>
+  );
+}
+
+export function NoteIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M5 3h14a1 1 0 0 1 1 1v16l-4-3H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" />
+      <path d="M8 8h8M8 12h5" />
+    </Icon>
+  );
+}

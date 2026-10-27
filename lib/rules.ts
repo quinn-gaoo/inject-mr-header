@@ -1,21 +1,41 @@
 import type { Browser } from 'wxt/browser';
-import { parseDomainInput } from './domain';
 import {
   normalizeProjectPath,
   validateExtraQuery,
   validateProjectPath,
 } from './gitlab';
+import { parseRedirectTarget, validateRegexPattern } from './pattern';
 import {
   isMrState,
   type AppSettings,
   type InjectionRule,
   type MrState,
+  type RuleMode,
 } from './types';
 
 export type DnrRule = Browser.declarativeNetRequest.Rule;
 
+/** 显式列出所有资源类型，避免 DNR 默认排除 main_frame。 */
+const DNR_RESOURCE_TYPES = [
+  'main_frame',
+  'sub_frame',
+  'stylesheet',
+  'script',
+  'image',
+  'font',
+  'object',
+  'xmlhttprequest',
+  'ping',
+  'csp_report',
+  'media',
+  'websocket',
+  'other',
+] as const;
+
 export interface RuleDraft {
-  domain: string;
+  mode: RuleMode;
+  pattern: string;
+  redirectTarget: string;
   headerName: string;
   projectPath: string;
   mrState: MrState;
@@ -27,7 +47,8 @@ export interface RuleDraft {
 export type RuleDraftErrors = Partial<Record<keyof RuleDraft | 'form', string>>;
 
 export interface ValidatedRuleDraft extends RuleDraft {
-  domain: string;
+  pattern: string;
+  redirectTarget: string;
   projectPath: string;
 }
 
@@ -49,10 +70,14 @@ export function isConfigured(settings: AppSettings): boolean {
 }
 
 export function isRuleActive(rule: InjectionRule, settings: AppSettings): boolean {
+  if (!settings.masterEnabled || !rule.enabled) return false;
+
+  if (rule.mode === 'redirect') {
+    return !validateRegexPattern(rule.pattern) && parseRedirectTarget(rule.redirectTarget).ok;
+  }
+
   return (
-    settings.masterEnabled &&
     isConfigured(settings) &&
-    rule.enabled &&
     rule.selectedMr !== null &&
     rule.selectedMr.iid > 0 &&
     rule.selectedMr.projectPath === rule.projectPath
@@ -65,7 +90,9 @@ export function countActiveRules(rules: InjectionRule[], settings: AppSettings):
 
 export function createEmptyDraft(headerName = 'X-MR-ID'): RuleDraft {
   return {
-    domain: '',
+    mode: 'header',
+    pattern: '',
+    redirectTarget: '',
     headerName,
     projectPath: '',
     mrState: 'opened',
@@ -81,52 +108,72 @@ export function validateRuleDraft(
   editingId?: string,
 ): { errors: RuleDraftErrors; normalized: ValidatedRuleDraft | null } {
   const errors: RuleDraftErrors = {};
+  const mode: RuleMode = draft.mode === 'redirect' ? 'redirect' : 'header';
+  const pattern = draft.pattern.trim();
+  const patternError = validateRegexPattern(pattern);
+  if (patternError) errors.pattern = patternError;
 
-  const domainResult = parseDomainInput(draft.domain);
-  if (!domainResult.ok) {
-    errors.domain = domainResult.error;
+  const duplicatePattern = pattern
+    ? existingRules.some(
+        (rule) =>
+          rule.id !== editingId &&
+          rule.mode === mode &&
+          rule.pattern.trim().toLowerCase() === pattern.toLowerCase(),
+      )
+    : false;
+  if (duplicatePattern) errors.pattern = '这个正则已经有同模式规则了，请直接编辑那条规则';
+
+  let headerName = draft.headerName.trim() || 'X-MR-ID';
+  let projectPath = normalizeProjectPath(draft.projectPath);
+  let redirectTarget = '';
+
+  if (mode === 'header') {
+    if (!headerName) {
+      errors.headerName = '请输入请求头名称';
+    } else if (!HEADER_NAME_RE.test(headerName) || headerName.length > 100) {
+      errors.headerName = '请求头名称不合法';
+    } else if (FORBIDDEN_HEADERS.has(headerName.toLowerCase())) {
+      errors.headerName = '浏览器不允许修改这个请求头';
+    }
+
+    const projectError = validateProjectPath(projectPath);
+    if (projectError) errors.projectPath = projectError;
+
+    const perPage = Number(draft.perPage);
+    if (!Number.isFinite(perPage) || perPage < 1 || perPage > 100) {
+      errors.perPage = '每页数量需在 1 - 100 之间';
+    }
+
+    const extraError = validateExtraQuery(draft.extraQuery);
+    if (extraError) errors.extraQuery = extraError;
+
+    if (!isMrState(draft.mrState)) errors.mrState = '请选择 MR 状态';
   } else {
-    const duplicate = existingRules.some(
-      (rule) => rule.id !== editingId && rule.domain.toLowerCase() === domainResult.domain,
-    );
-    if (duplicate) errors.domain = '这个域名已经有规则了，请直接编辑那条规则';
+    const target = parseRedirectTarget(draft.redirectTarget);
+    if (!target.ok) {
+      errors.redirectTarget = target.error;
+    } else {
+      redirectTarget = target.target.display;
+    }
   }
 
-  const headerName = draft.headerName.trim();
-  if (!headerName) {
-    errors.headerName = '请输入请求头名称';
-  } else if (!HEADER_NAME_RE.test(headerName) || headerName.length > 100) {
-    errors.headerName = '请求头名称不合法';
-  } else if (FORBIDDEN_HEADERS.has(headerName.toLowerCase())) {
-    errors.headerName = '浏览器不允许修改这个请求头';
-  }
-
-  const projectPath = normalizeProjectPath(draft.projectPath);
-  const projectError = validateProjectPath(projectPath);
-  if (projectError) errors.projectPath = projectError;
-
-  const perPage = Number(draft.perPage);
-  if (!Number.isFinite(perPage) || perPage < 1 || perPage > 100) {
-    errors.perPage = '每页数量需在 1 - 100 之间';
-  }
-
-  const extraError = validateExtraQuery(draft.extraQuery);
-  if (extraError) errors.extraQuery = extraError;
-
-  if (!isMrState(draft.mrState)) errors.mrState = '请选择 MR 状态';
-
-  if (Object.keys(errors).length > 0 || !domainResult.ok) {
+  if (Object.keys(errors).length > 0) {
     return { errors, normalized: null };
   }
 
+  const perPage = Number(draft.perPage);
   return {
     errors,
     normalized: {
-      domain: domainResult.domain,
+      mode,
+      pattern,
+      redirectTarget,
       headerName,
       projectPath,
-      mrState: draft.mrState,
-      perPage: Math.min(100, Math.max(1, Math.round(perPage))),
+      mrState: isMrState(draft.mrState) ? draft.mrState : 'opened',
+      perPage: Number.isFinite(perPage)
+        ? Math.min(100, Math.max(1, Math.round(perPage)))
+        : 100,
       extraQuery: draft.extraQuery.trim().replace(/^\?/, ''),
       enabled: draft.enabled,
     },
@@ -137,7 +184,7 @@ export interface BuiltDnrRules {
   rules: DnrRule[];
   /** 因数据不合法被跳过的规则说明。 */
   skipped: string[];
-  /** 成功生成注入规则的应用规则数量（一条应用规则会生成来源 + 文档两条 DNR 规则）。 */
+  /** 成功生成 DNR 规则的应用规则数量。 */
   appliedRuleCount: number;
 }
 
@@ -145,7 +192,7 @@ export function buildDynamicRules(
   rules: InjectionRule[],
   settings: AppSettings,
 ): BuiltDnrRules {
-  if (!settings.masterEnabled || !isConfigured(settings)) {
+  if (!settings.masterEnabled) {
     return { rules: [], skipped: [], appliedRuleCount: 0 };
   }
 
@@ -156,55 +203,75 @@ export function buildDynamicRules(
 
   for (const rule of rules) {
     if (!rule.enabled) continue;
+
+    const pattern = rule.pattern.trim();
+    const patternError = validateRegexPattern(pattern);
+    if (patternError) {
+      skipped.push(`「${pattern || rule.headerName || '未命名规则'}」${patternError}`);
+      continue;
+    }
+
+    if (rule.mode === 'redirect') {
+      const targetResult = parseRedirectTarget(rule.redirectTarget);
+      if (!targetResult.ok) {
+        skipped.push(`「${pattern}」${targetResult.error}`);
+        continue;
+      }
+      const target = targetResult.target;
+      result.push({
+        id: nextDnrId(`${rule.id}:redirect`, usedIds),
+        priority: 200 + Math.min(1000, pattern.length),
+        action: {
+          type: 'redirect',
+          redirect: {
+            transform: {
+              host: target.host,
+              ...(target.scheme ? { scheme: target.scheme } : {}),
+              ...(target.port !== undefined ? { port: target.port } : {}),
+              ...(target.path ? { path: target.path } : {}),
+            },
+          },
+        },
+        condition: {
+          regexFilter: pattern,
+          isUrlFilterCaseSensitive: false,
+          resourceTypes: [...DNR_RESOURCE_TYPES],
+        },
+      });
+      appliedRuleCount += 1;
+      continue;
+    }
+
+    if (!isConfigured(settings)) continue;
+
     const mr = rule.selectedMr;
     if (!mr || mr.iid <= 0 || mr.projectPath !== rule.projectPath) continue;
 
-    const domainResult = parseDomainInput(rule.domain);
-    if (!domainResult.ok) {
-      skipped.push(`「${rule.domain || '未命名规则'}」域名无效`);
-      continue;
-    }
-
     const headerName = rule.headerName.trim();
     if (!HEADER_NAME_RE.test(headerName) || FORBIDDEN_HEADERS.has(headerName.toLowerCase())) {
-      skipped.push(`「${domainResult.domain}」请求头名称无效`);
+      skipped.push(`「${pattern}」请求头名称无效`);
       continue;
     }
 
-    const domain = domainResult.domain;
-    const priority = Math.min(100_000, 100 + domain.split('.').length * 100 + domain.length);
-    const action: DnrRule['action'] = {
-      type: 'modifyHeaders',
-      requestHeaders: [
-        {
-          header: headerName,
-          operation: 'set',
-          value: String(mr.iid),
-        },
-      ],
-    };
-
-    // 1) 页面在规则域名下时，页面发起的请求（含跨域接口）都注入
     result.push({
-      id: nextDnrId(`${rule.id}:initiator`, usedIds),
-      priority,
-      action,
+      id: nextDnrId(`${rule.id}:header`, usedIds),
+      priority: 100 + Math.min(100, pattern.length),
+      action: {
+        type: 'modifyHeaders',
+        requestHeaders: [
+          {
+            header: headerName,
+            operation: 'set',
+            value: String(mr.iid),
+          },
+        ],
+      },
       condition: {
-        initiatorDomains: [domain],
+        regexFilter: pattern,
+        isUrlFilterCaseSensitive: false,
+        resourceTypes: [...DNR_RESOURCE_TYPES],
       },
     });
-
-    // 2) 地址栏/顶层导航的 HTML 文档请求本身没有 initiator，单独按目标域名匹配
-    result.push({
-      id: nextDnrId(`${rule.id}:document`, usedIds),
-      priority: Math.min(100_000, priority + 1),
-      action,
-      condition: {
-        requestDomains: [domain],
-        resourceTypes: ['main_frame'],
-      },
-    });
-
     appliedRuleCount += 1;
   }
 

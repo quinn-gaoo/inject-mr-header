@@ -9,7 +9,9 @@ import {
   SparkIcon,
 } from '@/components/icons';
 import { Switch } from '@/components/Switch';
+import { parseDomainInput } from '@/lib/domain';
 import { selectedMrFromOption } from '@/lib/format';
+import { domainToUrlPattern } from '@/lib/pattern';
 import { countActiveRules, isConfigured } from '@/lib/rules';
 import type { InjectionRule, MrOption } from '@/lib/types';
 import { useAppState } from '@/lib/useAppState';
@@ -29,12 +31,13 @@ export default function Options() {
     removeRule,
     setRuleEnabled,
     setSelectedMr,
+    setRuleMrMeta,
   } = useAppState();
   const { status } = useInjectionStatus();
 
   const [editor, setEditor] = useState<{
     rule: InjectionRule | null;
-    initialDomain?: string;
+    initialPattern?: string;
   } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<InjectionRule | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -50,9 +53,14 @@ export default function Options() {
     const params = new URLSearchParams(window.location.search);
     const wantsNew = params.get('new') === '1' || window.location.hash === '#new';
     if (!wantsNew) return;
-    const initialDomain = params.get('domain') ?? '';
+    const rawInitial = params.get('pattern') ?? params.get('domain') ?? '';
+    let initialPattern = rawInitial;
+    if (!params.get('pattern') && rawInitial) {
+      const parsed = parseDomainInput(rawInitial);
+      initialPattern = parsed.ok ? domainToUrlPattern(parsed.domain) : rawInitial;
+    }
     const timer = setTimeout(() => {
-      setEditor({ rule: null, initialDomain });
+      setEditor({ rule: null, initialPattern });
       history.replaceState(null, '', window.location.pathname);
     }, 50);
     return () => clearTimeout(timer);
@@ -123,21 +131,19 @@ export default function Options() {
 
   const statusTone = status?.error
     ? 'danger'
-    : !configured
+    : !settings.masterEnabled
       ? 'muted'
-      : !settings.masterEnabled
-        ? 'muted'
-        : status?.appliedRuleCount
-          ? 'ok'
-          : 'muted';
+      : status?.appliedRuleCount
+        ? 'ok'
+        : 'muted';
   const statusText = status?.error
     ? '同步异常'
-    : !configured
-      ? '未连接 GitLab'
-      : !settings.masterEnabled
-        ? '已暂停'
-        : (status?.appliedRuleCount ?? 0) > 0
-          ? `${status?.appliedRuleCount} 条规则生效中`
+    : !settings.masterEnabled
+      ? '已暂停'
+      : (status?.appliedRuleCount ?? 0) > 0
+        ? `${status?.appliedRuleCount} 条规则生效中`
+        : !configured
+          ? '未连接 GitLab'
           : activeCount > 0
             ? '应用中'
             : rules.length > 0
@@ -154,7 +160,7 @@ export default function Options() {
           <div>
             <h1 className="brand-title">MR Header Injector</h1>
             <p className="brand-subtitle">
-              按页面域名注入 MR 请求头
+              按请求 URL 注入请求头或重定向
             </p>
           </div>
         </div>
@@ -209,7 +215,7 @@ export default function Options() {
         <div className="overlay-copy">
           <h2 className="overlay-title">悬浮窗口</h2>
           <p className="overlay-desc">
-            开启后，只要当前页面匹配到已配置的规则，注入页面的悬浮窗口就会保留显示；规则停用或关闭不会隐藏它。
+            开启后，只有当前页面 URL 命中请求头规则时才显示悬浮窗口；重定向规则不影响它，规则停用也不会隐藏。
           </p>
         </div>
         <div className={`overlay-control${settings.pageOverlayEnabled ? ' is-on' : ''}`}>
@@ -244,7 +250,7 @@ export default function Options() {
               <SparkIcon />
             </div>
             <div className="empty-title">暂无规则</div>
-            <p>配置页面域名、仓库和 Header。</p>
+            <p>配置请求 URL 正则、仓库和 Header，或添加重定向规则。</p>
             <button
               type="button"
               className="btn btn-primary"
@@ -264,6 +270,7 @@ export default function Options() {
                 variant="page"
                 onToggle={(enabled) => void handleToggle(rule, enabled)}
                 onSelectTag={(mr) => void handleSelectTag(rule, mr)}
+                onSaveMeta={(meta) => void setRuleMrMeta(rule.id, meta)}
                 onEdit={() => setEditor({ rule })}
                 onDelete={() => setDeleteTarget(rule)}
               />
@@ -274,11 +281,11 @@ export default function Options() {
 
       {editor ? (
         <RuleEditor
-          key={editor.rule?.id ?? `new-${editor.initialDomain ?? ''}`}
+          key={editor.rule?.id ?? `new-${editor.initialPattern ?? ''}`}
           settings={settings}
           rules={rules}
           rule={editor.rule}
-          initialDomain={editor.initialDomain}
+          initialPattern={editor.initialPattern}
           onClose={() => setEditor(null)}
           onSave={handleSaveRule}
         />
@@ -304,7 +311,7 @@ export default function Options() {
                   删除规则
                 </h2>
                 <p className="modal-subtitle">
-                  确定删除 <code>{deleteTarget.domain}</code>？
+                  确定删除 <code title={deleteTarget.pattern}>{deleteTarget.pattern}</code>？
                 </p>
               </div>
               <button
